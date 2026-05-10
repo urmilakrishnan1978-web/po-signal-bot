@@ -45,7 +45,7 @@ async def fetch_data(session, symbol):
         pct   = float(q.get("percent_change") or 0)
         rsi   = float(rd["values"][0]["rsi"]) if rd.get("values") else 50.0
         macd_v= float(md["values"][0]["macd"]) if md.get("values") else 0.0
-        macd_s= float(md["values"][0]["signal"]) if md.get("values") else 0.0
+        macd_s= float(md["values"][0].get("signal") or md["values"][0].get("signal_line") or 0) if md.get("values") else 0.0
         bull=0; bear=0
         if rsi<40: bull+=3
         elif rsi<45: bull+=2
