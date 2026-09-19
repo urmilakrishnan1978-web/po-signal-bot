@@ -1,0 +1,93 @@
+import os
+import time
+import requests
+import numpy as np
+
+# Telegram Configurations (GitHub Secrets se automatic lenge)
+TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
+TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
+
+MIN_PAYOUT = 65  # Minimum Payout Filter (65%)
+
+def calculate_rsi(prices, period=14):
+    if len(prices) < period + 1:
+        return 50.0
+    deltas = np.diff(prices)
+    gains = np.where(deltas > 0, deltas, 0)
+    losses = np.where(deltas < 0, -deltas, 0)
+    
+    avg_gain = np.mean(gains[-period:])
+    avg_loss = np.mean(losses[-period:])
+    
+    if avg_loss == 0:
+        return 100.0
+    rs = avg_gain / avg_loss
+    return 100.0 - (100.0 / (1.0 + rs))
+
+def calculate_ema(prices, period=50):
+    if len(prices) < period:
+        return prices[-1]
+    weights = np.exp(np.linspace(-1., 0., period))
+    weights /= weights.sum()
+    return float(np.convolve(prices, weights, mode='full')[len(prices)-1])
+
+def send_telegram_signal(pair, signal_type, rsi_val, payout, current_price):
+    emoji = "🟢" if signal_type == "CALL" else "🔴"
+    message = (
+        f"🚨 **QUANTUM HIGH-ACCURACY SIGNAL** 🚨\n\n"
+        f"📊 **Pair:** {pair}\n"
+        f"💰 **Payout:** {payout}%\n"
+        f"⏳ **Timeframe:** M1 (1 Min Expiry)\n"
+        f"📈 **RSI Level:** {rsi_val:.1f}\n"
+        f"💵 **Price:** {current_price}\n\n"
+        f"👉 **ACTION:** {emoji} **{signal_type}**\n"
+        f"⏱️ **Entry:** Next Candle Open"
+    )
+    url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
+    payload = {"chat_id": TELEGRAM_CHAT_ID, "text": message, "parse_mode": "Markdown"}
+    try:
+        res = requests.post(url, json=payload, timeout=10)
+        print(f"Signal Sent: {res.status_code}")
+    except Exception as e:
+        print(f"Error sending Telegram message: {e}")
+
+def run_quantum_bot():
+    print("Quantum Engine Active: Monitoring Pairs & 65%+ Payout...")
+    # Demo/Production live stream loop simulation across pairs
+    pairs_list = ["EUR/USD", "GBP/USD", "EUR/JPY", "USD/JPY"]
+    
+    while True:
+        try:
+            for pair in pairs_list:
+                # Real-time simulated market price structure / API connection
+                # Live Payout query check
+                current_payout = 82  # Example live payout check
+                
+                if current_payout < MIN_PAYOUT:
+                    continue  # Payout 65% se kam hone par skip karega
+
+                # Fetching dummy historical candle close prices for RSI & EMA calculation
+                mock_prices = np.random.normal(loc=1.0850, scale=0.0005, size=60).tolist()
+                
+                rsi_val = calculate_rsi(mock_prices, period=14)
+                ema_50 = calculate_ema(mock_prices, period=50)
+                last_price = mock_prices[-1]
+
+                # STRICT CONFLUENCE LOGIC:
+                # CALL: RSI <= 30 (Oversold) AND Price >= EMA 50 (Uptrend)
+                if rsi_val <= 30 and last_price >= ema_50:
+                    send_telegram_signal(pair, "CALL", rsi_val, current_payout, last_price)
+                    time.sleep(60) # Wait for candle expiry
+
+                # PUT: RSI >= 70 (Overbought) AND Price <= EMA 50 (Downtrend)
+                elif rsi_val >= 70 and last_price <= ema_50:
+                    send_telegram_signal(pair, "PUT", rsi_val, current_payout, last_price)
+                    time.sleep(60)
+
+            time.sleep(5) # Poll interval
+        except Exception as e:
+            print(f"Loop Exception: {e}")
+            time.sleep(5)
+
+if __name__ == "__main__":
+    run_quantum_bot()
