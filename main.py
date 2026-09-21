@@ -1,6 +1,7 @@
 import os
 import asyncio
 import logging
+import requests
 from datetime import datetime
 import pytz
 from flask import Flask
@@ -11,25 +12,41 @@ from telegram.ext import Application, CommandHandler, CallbackQueryHandler, Cont
 # LOGGING SETUP
 logging.basicConfig(level=logging.INFO)
 
-# FLASK KEEP-ALIVE SERVER FOR RENDER
+# RENDER APP URL FOR ANTI-SLEEP PING
+RENDER_URL = "https://po-signal-bot-v2.onrender.com"
+
+# FLASK KEEP-ALIVE SERVER
 app = Flask(__name__)
 
 @app.route('/')
 def health_check():
-    return "PO iSniper OTC Bot is Running 24/7!"
+    return "PO iSniper OTC Bot is Running 24/7 Non-Stop!"
 
 def run_flask():
     port = int(os.environ.get("PORT", 8080))
     app.run(host="0.0.0.0", port=port)
 
-# Start Flask in background thread
+# Start Flask Server
 Thread(target=run_flask, daemon=True).start()
+
+# ANTI-SLEEP SELF PING LOOP (Har 5 minute me khud ko jagayega)
+def self_ping_loop():
+    import time
+    while True:
+        time.sleep(300) # 5 Minutes
+        try:
+            response = requests.get(RENDER_URL)
+            logging.info(f"Self-ping successful: {response.status_code}")
+        except Exception as e:
+            logging.error(f"Self-ping failed: {e}")
+
+Thread(target=self_ping_loop, daemon=True).start()
 
 # CONFIGURATION
 BOT_TOKEN = "8880160934:AAH3lrsBmd0prjtV6cyIYzkczcZRPjRZHtw"
-ADMIN_ID = 1420868312  # Verified Correct Admin ID
+ADMIN_ID = 1420868312  # Verified Admin ID
 
-# EXACT 27 ACTIVE OTC PAIRS
+# 27 ACTIVE OTC PAIRS
 FOREX_OTC_PAIRS = [
     "EUR/USD OTC", "GBP/USD OTC", "USD/JPY OTC", "AUD/USD OTC", "USD/CAD OTC",
     "USD/CHF OTC", "EUR/GBP OTC", "EUR/JPY OTC", "GBP/JPY OTC", "AUD/JPY OTC",
@@ -67,7 +84,6 @@ def generate_signal_text(selected_pair=None):
     payout = random.randint(75, 92)  # Min 70%+ Payout
     
     now_ist = get_ist_time()
-    # Signal generated 15-20 sec before next candle open
     entry_minute = now_ist.minute + 1 if now_ist.second >= 40 else now_ist.minute
     entry_hour = now_ist.hour
     if entry_minute >= 60:
@@ -146,11 +162,9 @@ async def button_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
     elif query.data == "show_pair_menu":
-        # Create buttons for ALL 27 OTC PAIRS in rows of 3
         keyboard = []
         row = []
         for pair in FOREX_OTC_PAIRS:
-            # Shortened label for clean button grid display
             clean_label = pair.replace(" OTC", "")
             row.append(InlineKeyboardButton(clean_label, callback_data=f"sig_{pair}"))
             if len(row) == 3:
