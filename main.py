@@ -27,7 +27,7 @@ Thread(target=run_flask, daemon=True).start()
 
 # CONFIGURATION
 BOT_TOKEN = "8880160934:AAH3lrsBmd0prjtV6cyIYzkczcZRPjRZHtw"
-ADMIN_ID = ADMIN_ID = 1420868312
+ADMIN_ID = 1420868312  # Sahi Admin ID update kar di hai
 
 # 28 ALL ACTIVE OTC PAIRS
 FOREX_OTC_PAIRS = [
@@ -60,9 +60,9 @@ def is_authorized(user_id):
         return False
     return True
 
-def generate_signal_text():
+def generate_signal_text(selected_pair=None):
     import random
-    pair = random.choice(FOREX_OTC_PAIRS)
+    pair = selected_pair if selected_pair else random.choice(FOREX_OTC_PAIRS)
     direction = random.choice(["🟢 CALL (BUY)", "🔴 PUT (SELL)"])
     payout = random.randint(75, 92)  # Min 70%+ Payout
     
@@ -103,7 +103,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     keyboard = [
         [InlineKeyboardButton("📊 28 OTC PAIRS", callback_data="list_pairs")],
-        [InlineKeyboardButton("⚡ GET SIGNAL (MANUAL)", callback_data="get_signal")],
+        [InlineKeyboardButton("⚡ SELECT PAIR FOR SIGNAL", callback_data="show_pair_menu")],
         [InlineKeyboardButton("🔄 AUTO SIGNALS (ON/OFF)", callback_data="toggle_auto")]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
@@ -123,7 +123,6 @@ async def auto_signal_loop(context: ContextTypes.DEFAULT_TYPE, chat_id: int):
     global auto_signal_active
     while auto_signal_active:
         now = get_ist_time()
-        # Wait until 15-20 seconds before the minute ends (at second 42)
         target_second = 42
         seconds_to_wait = (target_second - now.second) % 60
         if seconds_to_wait == 0:
@@ -146,8 +145,22 @@ async def button_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode="Markdown"
         )
 
-    elif query.data == "get_signal":
-        signal_msg = generate_signal_text()
+    elif query.data == "show_pair_menu":
+        # Display buttons for top OTC pairs
+        keyboard = []
+        # Group pairs in rows of 2
+        for i in range(0, 10, 2):
+            row = [
+                InlineKeyboardButton(FOREX_OTC_PAIRS[i], callback_data=f"sig_{FOREX_OTC_PAIRS[i]}"),
+                InlineKeyboardButton(FOREX_OTC_PAIRS[i+1], callback_data=f"sig_{FOREX_OTC_PAIRS[i+1]}")
+            ]
+            keyboard.append(row)
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        await query.message.reply_text("🎯 **Jis pair ka signal chahiye, us par click karein:**", reply_markup=reply_markup)
+
+    elif query.data.startswith("sig_"):
+        selected_pair = query.data.replace("sig_", "")
+        signal_msg = generate_signal_text(selected_pair)
         await query.message.reply_text(signal_msg, parse_mode="Markdown")
 
     elif query.data == "toggle_auto":
