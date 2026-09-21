@@ -2,7 +2,7 @@ import os
 import asyncio
 import logging
 import requests
-from datetime import datetime
+from datetime import datetime, timedelta
 import pytz
 from flask import Flask
 from threading import Thread
@@ -135,6 +135,35 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         parse_mode="Markdown"
     )
 
+# ADMIN COMMAND TO ADD USER ACCESS VIA TELEGRAM
+async def add_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    if user_id != ADMIN_ID:
+        return  # Non-admin users cannot execute this
+
+    try:
+        # Usage: /add <target_user_id> <days>
+        target_id = int(context.args[0])
+        days = int(context.args[1])
+        
+        expiry_date = get_ist_time().replace(tzinfo=None) + timedelta(days=days)
+        LICENSE_DB[target_id] = expiry_date
+        
+        expiry_str = expiry_date.strftime("%Y-%m-%d %H:%M:%S IST")
+        await update.message.reply_text(
+            f"✅ **USER ACCESS GRANTED** ✅\n\n"
+            f"• **Telegram ID:** `{target_id}`\n"
+            f"• **Duration:** {days} Days\n"
+            f"• **Expires On:** `{expiry_str}`",
+            parse_mode="Markdown"
+        )
+    except (IndexError, ValueError):
+        await update.message.reply_text(
+            "⚠️ **Format:** `/add <USER_ID> <DAYS>`\n"
+            "Example: `/add 987654321 1`",
+            parse_mode="Markdown"
+        )
+
 async def auto_signal_loop(context: ContextTypes.DEFAULT_TYPE, chat_id: int):
     global auto_signal_active
     while auto_signal_active:
@@ -198,6 +227,7 @@ def main():
     application = Application.builder().token(BOT_TOKEN).build()
 
     application.add_handler(CommandHandler("start", start))
+    application.add_handler(CommandHandler("add", add_user))
     application.add_handler(CallbackQueryHandler(button_click))
 
     print("🚀 PO iSniper OTC Engine Running Successfully...")
