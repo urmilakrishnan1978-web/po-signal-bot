@@ -27,16 +27,16 @@ Thread(target=run_flask, daemon=True).start()
 
 # CONFIGURATION
 BOT_TOKEN = "8880160934:AAH3lrsBmd0prjtV6cyIYzkczcZRPjRZHtw"
-ADMIN_ID = 1420868312  # Sahi Admin ID update kar di hai
+ADMIN_ID = 1420868312  # Verified Correct Admin ID
 
-# 28 ALL ACTIVE OTC PAIRS
+# EXACT 27 ACTIVE OTC PAIRS
 FOREX_OTC_PAIRS = [
     "EUR/USD OTC", "GBP/USD OTC", "USD/JPY OTC", "AUD/USD OTC", "USD/CAD OTC",
     "USD/CHF OTC", "EUR/GBP OTC", "EUR/JPY OTC", "GBP/JPY OTC", "AUD/JPY OTC",
     "NZD/USD OTC", "EUR/CAD OTC", "EUR/AUD OTC", "GBP/CAD OTC", "GBP/AUD OTC",
     "AUD/CAD OTC", "AUD/NZD OTC", "CAD/JPY OTC", "CHF/JPY OTC", "NZD/JPY OTC",
     "EUR/NZD OTC", "USD/RUB OTC", "CAD/CHF OTC", "NZD/CAD OTC", "GBP/CHF OTC",
-    "AUD/CHF OTC", "USD/TRY OTC", "USD/INR OTC"
+    "AUD/CHF OTC", "USD/INR OTC"
 ]
 
 LICENSE_DB = {
@@ -102,8 +102,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     keyboard = [
-        [InlineKeyboardButton("📊 28 OTC PAIRS", callback_data="list_pairs")],
-        [InlineKeyboardButton("⚡ SELECT PAIR FOR SIGNAL", callback_data="show_pair_menu")],
+        [InlineKeyboardButton("📊 ALL 27 OTC PAIRS LIST", callback_data="list_pairs")],
+        [InlineKeyboardButton("⚡ SELECT PAIR FOR MANUAL SIGNAL", callback_data="show_pair_menu")],
         [InlineKeyboardButton("🔄 AUTO SIGNALS (ON/OFF)", callback_data="toggle_auto")]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
@@ -139,24 +139,28 @@ async def button_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.answer()
 
     if query.data == "list_pairs":
-        pairs_str = "\n".join([f"• {p} (70%-92% Payout)" for p in FOREX_OTC_PAIRS])
+        pairs_str = "\n".join([f"{idx+1}. {p} (70%-92% Payout)" for idx, p in enumerate(FOREX_OTC_PAIRS)])
         await query.message.reply_text(
-            f"📊 **Available 28 Active OTC Pairs:**\n\n{pairs_str}",
+            f"📊 **Available All 27 Active OTC Pairs:**\n\n{pairs_str}",
             parse_mode="Markdown"
         )
 
     elif query.data == "show_pair_menu":
-        # Display buttons for top OTC pairs
+        # Create buttons for ALL 27 OTC PAIRS in rows of 3
         keyboard = []
-        # Group pairs in rows of 2
-        for i in range(0, 10, 2):
-            row = [
-                InlineKeyboardButton(FOREX_OTC_PAIRS[i], callback_data=f"sig_{FOREX_OTC_PAIRS[i]}"),
-                InlineKeyboardButton(FOREX_OTC_PAIRS[i+1], callback_data=f"sig_{FOREX_OTC_PAIRS[i+1]}")
-            ]
+        row = []
+        for pair in FOREX_OTC_PAIRS:
+            # Shortened label for clean button grid display
+            clean_label = pair.replace(" OTC", "")
+            row.append(InlineKeyboardButton(clean_label, callback_data=f"sig_{pair}"))
+            if len(row) == 3:
+                keyboard.append(row)
+                row = []
+        if row:
             keyboard.append(row)
+            
         reply_markup = InlineKeyboardMarkup(keyboard)
-        await query.message.reply_text("🎯 **Jis pair ka signal chahiye, us par click karein:**", reply_markup=reply_markup)
+        await query.message.reply_text("🎯 **Jis OTC pair ka signal chahiye, us button par click karein:**", reply_markup=reply_markup)
 
     elif query.data.startswith("sig_"):
         selected_pair = query.data.replace("sig_", "")
