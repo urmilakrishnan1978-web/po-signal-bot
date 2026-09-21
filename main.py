@@ -1,6 +1,18 @@
 import os
 import threading
+import logging
+import time
+import datetime
+import pytz
+import random
 from flask import Flask
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
+from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
+
+# ---------------------------------------------------------
+# LOGGING & FLASK SETUP (FOR RENDER 24/7 UPTIME)
+# ---------------------------------------------------------
+logging.basicConfig(level=logging.INFO)
 
 app = Flask(__name__)
 
@@ -12,23 +24,15 @@ def run_web():
     port = int(os.environ.get("PORT", 10000))
     app.run(host="0.0.0.0", port=port)
 
+# Run Flask in background thread
 threading.Thread(target=run_web, daemon=True).start()
-
-import time
-import datetime
-import pytz
-import random
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
-from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
 
 # ---------------------------------------------------------
 # CONFIGURATION
 # ---------------------------------------------------------
-
 BOT_TOKEN = "8080160934:AAH3irsBmd0prjtv6cy1KzkczZRPj8ZHtw"
 ADMIN_ID = 1420608312
 
-# Top 20 Turbo OTC Pairs
 FOREX_OTC_PAIRS = [
     "EUR/USD OTC", "GBP/USD OTC", "USD/JPY OTC", "AUD/USD OTC", "USD/CAD OTC",
     "USD/CHF OTC", "EUR/GBP OTC", "EUR/JPY OTC", "GBP/JPY OTC", "AUD/JPY OTC",
@@ -38,7 +42,6 @@ FOREX_OTC_PAIRS = [
     "AUD/CHF OTC", "USD/TRY OTC", "USD/INR OTC"
 ]
 
-# Database for Licenses (Telegram ID -> Expiry Timestamp)
 LICENSE_DB = {
     ADMIN_ID: datetime.datetime(2099, 12, 31, 23, 59, 59)
 }
@@ -46,7 +49,6 @@ LICENSE_DB = {
 # ---------------------------------------------------------
 # HELPER FUNCTIONS
 # ---------------------------------------------------------
-
 def get_ist_time():
     ist = pytz.timezone('Asia/Kolkata')
     return datetime.datetime.now(ist)
@@ -60,43 +62,22 @@ def is_authorized(user_id):
     return True
 
 # ---------------------------------------------------------
-# OTC SIGNAL GENERATOR LOGIC
-# ---------------------------------------------------------
-
-def scan_otc_pattern(selected_pair=None):
-    pair = selected_pair if selected_pair else random.choice(FOREX_OTC_PAIRS)
-    payout = random.randint(85, 94)
-    direction = random.choice(["CALL (BUY) 🟢", "PUT (SELL) 🔴"])
-    confidence = random.randint(88, 96)
-    
-    ist_now = get_ist_time()
-    entry_time = (ist_now + datetime.timedelta(minutes=1)).strftime("%H:%M:00 IST")
-    
-    return {
-        "pair": pair,
-        "direction": direction,
-        "payout": f"{payout}%",
-        "confidence": f"{confidence}%",
-        "entry_time": entry_time
-    }
-
-# ---------------------------------------------------------
 # TELEGRAM BOT HANDLERS
 # ---------------------------------------------------------
-
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     
     if not is_authorized(user_id):
         await update.message.reply_text(
-            "🛑 ACCESS DENIED - PO iSniper OTC 🛑\n\n"
-            "Aapke paas active subscription nahi hai."
+            f"🛑 ACCESS DENIED - PO iSniper OTC 🛑\n\n"
+            f"Aapka Telegram ID: {user_id}\n"
+            f"Aapke paas active subscription nahi hai."
         )
         return
 
     keyboard = [
         [InlineKeyboardButton("🚀 OPEN OTC TERMINAL", web_app=WebAppInfo(url="https://po-sniper.pages.dev/"))],
-        [InlineKeyboardButton("📊 PAIRS LIST", callback_data="pairs_list")]
+        [InlineKeyboardButton("📊 PAIRS LIST", callback_data="list_pairs")]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     
@@ -113,19 +94,23 @@ async def button_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     
-    if query.data == "pairs_list":
+    if query.data == "list_pairs":
         pairs_str = "\n".join([f"• {p}" for p in FOREX_OTC_PAIRS[:10]])
         await query.message.reply_text(
             f"📊 **Available OTC Pairs:**\n\n{pairs_str}\n\n...and more!"
         )
 
+# ---------------------------------------------------------
+# MAIN EXECUTION
+# ---------------------------------------------------------
 def main():
     application = Application.builder().token(BOT_TOKEN).build()
+    
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CallbackQueryHandler(button_click))
     
     print("🚀 PO iSniper OTC Engine Running Successfully...")
-    application.run_polling()
+    application.run_polling(drop_pending_updates=True)
 
 if __name__ == '__main__':
     main()
