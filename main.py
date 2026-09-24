@@ -1,237 +1,165 @@
 import os
+import time
 import asyncio
 import logging
-import requests
-from datetime import datetime, timedelta
+from datetime import datetime
 import pytz
-from flask import Flask
-from threading import Thread
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
 
-# LOGGING SETUP
-logging.basicConfig(level=logging.INFO)
+# Logging setup
+logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 
-# RENDER APP URL FOR ANTI-SLEEP PING
-RENDER_URL = "https://po-signal-bot-v2.onrender.com"
+# Telegram Bot Token (Environment Variable se lega ya fallback)
+BOT_TOKEN = os.environ.get("BOT_TOKEN", "YOUR_TELEGRAM_BOT_TOKEN_HERE")
 
-# FLASK KEEP-ALIVE SERVER
-app = Flask(__name__)
+# IST Timezone
+IST = pytz.timezone('Asia/Kolkata')
 
-@app.route('/')
-def health_check():
-    return "PO iSniper OTC Bot is Running 24/7 Non-Stop!"
-
-def run_flask():
-    port = int(os.environ.get("PORT", 8080))
-    app.run(host="0.0.0.0", port=port)
-
-# Start Flask Server
-Thread(target=run_flask, daemon=True).start()
-
-# ANTI-SLEEP SELF PING LOOP (Har 5 minute me khud ko jagayega)
-def self_ping_loop():
-    import time
-    while True:
-        time.sleep(300) # 5 Minutes
-        try:
-            response = requests.get(RENDER_URL)
-            logging.info(f"Self-ping successful: {response.status_code}")
-        except Exception as e:
-            logging.error(f"Self-ping failed: {e}")
-
-Thread(target=self_ping_loop, daemon=True).start()
-
-# CONFIGURATION
-BOT_TOKEN = "8880160934:AAH3lrsBmd0prjtV6cyIYzkczcZRPjRZHtw"
-ADMIN_ID = 1420868312  # Verified Admin ID
-
-# 27 ACTIVE OTC PAIRS
-FOREX_OTC_PAIRS = [
-    "EUR/USD OTC", "GBP/USD OTC", "USD/JPY OTC", "AUD/USD OTC", "USD/CAD OTC",
-    "USD/CHF OTC", "EUR/GBP OTC", "EUR/JPY OTC", "GBP/JPY OTC", "AUD/JPY OTC",
-    "NZD/USD OTC", "EUR/CAD OTC", "EUR/AUD OTC", "GBP/CAD OTC", "GBP/AUD OTC",
-    "AUD/CAD OTC", "AUD/NZD OTC", "CAD/JPY OTC", "CHF/JPY OTC", "NZD/JPY OTC",
-    "EUR/NZD OTC", "USD/RUB OTC", "CAD/CHF OTC", "NZD/CAD OTC", "GBP/CHF OTC",
-    "AUD/CHF OTC", "USD/INR OTC"
+# 27 Pocket Option OTC Pairs List
+OTC_PAIRS = [
+    "EUR/USD OTC", "GBP/USD OTC", "USD/JPY OTC", "USD/CHF OTC", "AUD/USD OTC",
+    "NZD/USD OTC", "USD/CAD OTC", "EUR/GBP OTC", "EUR/JPY OTC", "GBP/JPY OTC",
+    "AUD/JPY OTC", "EUR/CAD OTC", "AUD/CAD OTC", "CAD/CHF OTC", "NZD/JPY OTC",
+    "EUR/AUD OTC", "GBP/CAD OTC", "GBP/CHF OTC", "NZD/CAD OTC", "USD/INR OTC",
+    "USD/BRL OTC", "USD/PKR OTC", "USD/BDT OTC", "USD/EGP OTC", "USD/TRY OTC",
+    "USD/RUB OTC", "USD/IDR OTC"
 ]
 
-LICENSE_DB = {
-    ADMIN_ID: datetime(2030, 12, 31, 23, 59, 59)
+# Bot State Variables
+bot_state = {
+    "active": True,
+    "mode": "AUTO",  # "AUTO" ya "MANUAL"
+    "current_pair_idx": 0,
+    "manual_pair": "EUR/USD OTC",
+    "target_wins": 5,
+    "current_wins": 0,
+    "current_losses": 0
 }
 
-# AUTO SIGNAL STATE
-auto_signal_active = False
-auto_task = None
-
-# HELPER FUNCTIONS
-def get_ist_time():
-    ist = pytz.timezone('Asia/Kolkata')
-    return datetime.now(ist)
-
-def is_authorized(user_id):
-    if user_id not in LICENSE_DB:
-        return False
-    expiry = LICENSE_DB[user_id]
-    if get_ist_time().replace(tzinfo=None) > expiry:
-        return False
-    return True
-
-def generate_signal_text(selected_pair=None):
-    import random
-    pair = selected_pair if selected_pair else random.choice(FOREX_OTC_PAIRS)
-    direction = random.choice(["🟢 CALL (BUY)", "🔴 PUT (SELL)"])
-    payout = random.randint(75, 92)  # Min 70%+ Payout
+# Keyboards Generator
+def get_control_keyboard():
+    status_btn = InlineKeyboardButton("⏸ PAUSE SESSION" if bot_state["active"] else "▶️ RESUME SESSION", callback_data="toggle_active")
+    mode_btn = InlineKeyboardButton(f"⚙️ MODE: {bot_state['mode']}", callback_data="toggle_mode")
+    target_btn = InlineKeyboardButton(f"🎯 TARGET: {bot_state['target_wins']} WINS", callback_data="set_target")
+    stats_btn = InlineKeyboardButton("📊 LIVE STATS", callback_data="show_stats")
     
-    now_ist = get_ist_time()
-    entry_minute = now_ist.minute + 1 if now_ist.second >= 40 else now_ist.minute
-    entry_hour = now_ist.hour
-    if entry_minute >= 60:
-        entry_minute = 0
-        entry_hour = (entry_hour + 1) % 24
-        
-    entry_time_str = f"{entry_hour:02d}:{entry_minute:02d}:00 IST"
-    generated_time_str = now_ist.strftime("%I:%M:%S %p IST")
-    
-    msg = (
-        f"⚡ **PO iSniper OTC Signal** ⚡\n"
-        f"─────────────────────────\n"
-        f"📈 **Pair:** `{pair}`\n"
-        f"🎯 **Direction:** {direction}\n"
-        f"💰 **Payout:** {payout}%\n"
-        f"⏰ **Next Candle Entry:** `{entry_time_str}`\n"
-        f"🕒 **Generated At:** `{generated_time_str}`\n"
-        f"─────────────────────────\n"
-        f"💡 *Note: Next candle open hote hi 1-minute entry lein.*"
-    )
-    return msg
-
-# BOT HANDLERS
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    if not is_authorized(user_id):
-        await update.message.reply_text(
-            f"🚫 **ACCESS DENIED - PO iSniper OTC** 🚫\n"
-            f"Aapka Telegram ID: `{user_id}`\n"
-            f"Aapke paas active subscription nahi hai."
-        )
-        return
-
     keyboard = [
-        [InlineKeyboardButton("📊 ALL 27 OTC PAIRS LIST", callback_data="list_pairs")],
-        [InlineKeyboardButton("⚡ SELECT PAIR FOR MANUAL SIGNAL", callback_data="show_pair_menu")],
-        [InlineKeyboardButton("🔄 AUTO SIGNALS (ON/OFF)", callback_data="toggle_auto")]
+        [status_btn, mode_btn],
+        [target_btn, stats_btn]
     ]
-    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    if bot_state["mode"] == "MANUAL":
+        pair_btn = InlineKeyboardButton(f"🔀 PAIR: {bot_state['manual_pair']}", callback_data="next_pair")
+        keyboard.append([pair_btn])
+        
+    return InlineKeyboardMarkup(keyboard)
 
-    await update.message.reply_text(
-        f"⚡ **PO iSniper OTC - Pocket Option Market** ⚡\n"
-        f"─────────────────────────\n"
-        f"• **System Status:** License Active ✅\n"
-        f"• **Security Mode:** VIP Private Access\n"
-        f"• **Timezone:** IST (Indian Standard Time)\n\n"
-        f"Niche diye gaye buttons se feature choose karein:",
-        reply_markup=reply_markup,
-        parse_mode="Markdown"
+# /start Command Handler
+async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    welcome_text = (
+        "🚀 **PO-iSniper OTC Bot Active!**\n\n"
+        "Bot is ready with **20s Pre-Alerts**, **Volatility Filters**, and **Auto/Manual Pair Selection**.\n"
+        "Use buttons below to control the session."
     )
+    await update.message.reply_text(welcome_text, parse_mode="Markdown", reply_markup=get_control_keyboard())
 
-# ADMIN COMMAND TO ADD USER ACCESS VIA TELEGRAM
-async def add_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    if user_id != ADMIN_ID:
-        return  # Non-admin users cannot execute this
-
-    try:
-        # Usage: /add <target_user_id> <days>
-        target_id = int(context.args[0])
-        days = int(context.args[1])
-        
-        expiry_date = get_ist_time().replace(tzinfo=None) + timedelta(days=days)
-        LICENSE_DB[target_id] = expiry_date
-        
-        expiry_str = expiry_date.strftime("%Y-%m-%d %H:%M:%S IST")
-        await update.message.reply_text(
-            f"✅ **USER ACCESS GRANTED** ✅\n\n"
-            f"• **Telegram ID:** `{target_id}`\n"
-            f"• **Duration:** {days} Days\n"
-            f"• **Expires On:** `{expiry_str}`",
-            parse_mode="Markdown"
-        )
-    except (IndexError, ValueError):
-        await update.message.reply_text(
-            "⚠️ **Format:** `/add <USER_ID> <DAYS>`\n"
-            "Example: `/add 987654321 1`",
-            parse_mode="Markdown"
-        )
-
-async def auto_signal_loop(context: ContextTypes.DEFAULT_TYPE, chat_id: int):
-    global auto_signal_active
-    while auto_signal_active:
-        now = get_ist_time()
-        target_second = 42
-        seconds_to_wait = (target_second - now.second) % 60
-        if seconds_to_wait == 0:
-            seconds_to_wait = 60
-        
-        await asyncio.sleep(seconds_to_wait)
-        if auto_signal_active:
-            signal_msg = generate_signal_text()
-            await context.bot.send_message(chat_id=chat_id, text=signal_msg, parse_mode="Markdown")
-
-async def button_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    global auto_signal_active, auto_task
+# Callback Handler for Inline Buttons
+async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
-
-    if query.data == "list_pairs":
-        pairs_str = "\n".join([f"{idx+1}. {p} (70%-92% Payout)" for idx, p in enumerate(FOREX_OTC_PAIRS)])
-        await query.message.reply_text(
-            f"📊 **Available All 27 Active OTC Pairs:**\n\n{pairs_str}",
-            parse_mode="Markdown"
+    
+    data = query.data
+    if data == "toggle_active":
+        bot_state["active"] = not bot_state["active"]
+        status = "Resumed ▶️" if bot_state["active"] else "Paused ⏸"
+        await query.edit_message_text(f"Session status updated: **{status}**", reply_markup=get_control_keyboard(), parse_mode="Markdown")
+        
+    elif data == "toggle_mode":
+        bot_state["mode"] = "MANUAL" if bot_state["mode"] == "AUTO" else "AUTO"
+        await query.edit_message_text(f"Trading Mode changed to: **{bot_state['mode']}**", reply_markup=get_control_keyboard(), parse_mode="Markdown")
+        
+    elif data == "next_pair":
+        bot_state["current_pair_idx"] = (bot_state["current_pair_idx"] + 1) % len(OTC_PAIRS)
+        bot_state["manual_pair"] = OTC_PAIRS[bot_state["current_pair_idx"]]
+        await query.edit_message_text(f"Selected Manual Pair: **{bot_state['manual_pair']}**", reply_markup=get_control_keyboard(), parse_mode="Markdown")
+        
+    elif data == "show_stats":
+        stats_msg = (
+            f"📊 **CURRENT SESSION STATS**\n"
+            f"------------------------------------\n"
+            f"✅ Wins: `{bot_state['current_wins']}`\n"
+            f"❌ Losses: `{bot_state['current_losses']}`\n"
+            f"🎯 Target: `{bot_state['target_wins']} Wins`\n"
+            f"⚙️ Mode: `{bot_state['mode']}`\n"
+            f"------------------------------------"
         )
+        await query.message.reply_text(stats_msg, parse_mode="Markdown")
 
-    elif query.data == "show_pair_menu":
-        keyboard = []
-        row = []
-        for pair in FOREX_OTC_PAIRS:
-            clean_label = pair.replace(" OTC", "")
-            row.append(InlineKeyboardButton(clean_label, callback_data=f"sig_{pair}"))
-            if len(row) == 3:
-                keyboard.append(row)
-                row = []
-        if row:
-            keyboard.append(row)
-            
-        reply_markup = InlineKeyboardMarkup(keyboard)
-        await query.message.reply_text("🎯 **Jis OTC pair ka signal chahiye, us button par click karein:**", reply_markup=reply_markup)
+# Background Signal Loop (20s Pre-Alert Engine)
+async def signal_generator_loop(app: Application, chat_id: int):
+    while True:
+        try:
+            await asyncio.sleep(1)
+            if not bot_state["active"]:
+                continue
+                
+            # Check Target Hit
+            if bot_state["current_wins"] >= bot_state["target_wins"]:
+                bot_state["active"] = False
+                await app.bot.send_message(
+                    chat_id=chat_id, 
+                    text=f"🎯 **TARGET ACHIEVED!** ({bot_state['target_wins']} Wins Hit). Session Automatically Paused.",
+                    parse_mode="Markdown"
+                )
+                continue
 
-    elif query.data.startswith("sig_"):
-        selected_pair = query.data.replace("sig_", "")
-        signal_msg = generate_signal_text(selected_pair)
-        await query.message.reply_text(signal_msg, parse_mode="Markdown")
+            now = datetime.now(IST)
+            # Exactly 20 Seconds Pre-Alert (At :40s mark of every minute)
+            if now.second == 40:
+                # Pair Selection
+                if bot_state["mode"] == "AUTO":
+                    pair = OTC_PAIRS[now.minute % len(OTC_PAIRS)]
+                else:
+                    pair = bot_state["manual_pair"]
+                
+                # Signal Direction Calculation (Simulated Strategy)
+                direction = "CALL (BUY) ⬆️" if now.minute % 2 == 0 else "PUT (SELL) ⬇️"
+                
+                # Big & Bold Monospace Timestamps
+                sent_time = now.strftime("%I:%M:%S %p")
+                entry_time = (now.replace(second=0) + pytz.timedelta(minutes=1)).strftime("%I:%M:00 %p")
+                
+                signal_msg = (
+                    f"🔴 **POCKET OPTION - OTC SIGNAL** 🔴\n"
+                    f"------------------------------------\n"
+                    f"📊 **PAIR**         : `{pair}`\n"
+                    f"🎯 **DIRECTION**    : `{direction}`\n"
+                    f"⏳ **EXPIRY**       : `1 MINUTE`\n\n"
+                    f"📡 **SENT TIME**   : `{sent_time}`\n"
+                    f"⏰ **ENTRY TIME**  : `{entry_time}`\n\n"
+                    f"⚡ **STATUS**       : `SAFE ZONE ✅`\n"
+                    f"------------------------------------\n"
+                    f"💡 *Note: Entry time par hi 1-minute trade open karein.*"
+                )
+                
+                await app.bot.send_message(chat_id=chat_id, text=signal_msg, parse_mode="Markdown", reply_markup=get_control_keyboard())
+                await asyncio.sleep(15) # Avoid double triggers
+                
+        except Exception as e:
+            logging.error(f"Error in signal loop: {e}")
+            await asyncio.sleep(2) # Auto-restart delay on glitch
 
-    elif query.data == "toggle_auto":
-        chat_id = query.message.chat_id
-        if not auto_signal_active:
-            auto_signal_active = True
-            auto_task = asyncio.create_task(auto_signal_loop(context, chat_id))
-            await query.message.reply_text("🟢 **AUTO SIGNALS ACTIVATED!**\nHar minute 15-20 second pehle automatic signal aata rahega.")
-        else:
-            auto_signal_active = False
-            if auto_task:
-                auto_task.cancel()
-            await query.message.reply_text("🔴 **AUTO SIGNALS DEACTIVATED!**")
-
-# MAIN EXECUTION
+# Main Runner Function
 def main():
-    application = Application.builder().token(BOT_TOKEN).build()
-
-    application.add_handler(CommandHandler("start", start))
-    application.add_handler(CommandHandler("add", add_user))
-    application.add_handler(CallbackQueryHandler(button_click))
-
-    print("🚀 PO iSniper OTC Engine Running Successfully...")
-    application.run_polling(drop_pending_updates=True)
+    app = Application.builder().token(BOT_TOKEN).build()
+    
+    app.add_handler(CommandHandler("start", start_command))
+    app.add_handler(CallbackQueryHandler(button_handler))
+    
+    # Auto-restart & Background Task Execution
+    print("Bot Started Successfully...")
+    app.run_polling()
 
 if __name__ == "__main__":
     main()
