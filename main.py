@@ -11,7 +11,7 @@ from telegram.ext import Application, CommandHandler, CallbackQueryHandler, Cont
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 
 # Telegram Bot Token (Environment Variable se lega ya fallback)
-BOT_TOKEN = "8880160934:AAH3lrsBmd0prjtV6cyIYzkczcZRPjRZHtw"
+BOT_TOKEN = "@Real_otc_signal_bot"
 
 # IST Timezone
 IST = pytz.timezone('Asia/Kolkata')
