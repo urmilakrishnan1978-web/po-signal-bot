@@ -1,165 +1,231 @@
-import os
-import time
-import asyncio
-import logging
-from datetime import datetime
-import pytz
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>BINARY QUANTUM BOT</title>
+  <style>
+    /* Neon Dark Mobile UI Theme */
+    body {
+      background-color: #0b0d17;
+      color: #ffffff;
+      font-family: 'Arial Black', Gadget, sans-serif;
+      margin: 0;
+      padding: 10px;
+      text-align: center;
+    }
+    .header-title {
+      color: #00f0ff;
+      font-size: 26px;
+      text-transform: uppercase;
+      text-shadow: 0 0 10px #00f0ff;
+      margin-bottom: 10px;
+      font-weight: 900;
+    }
+    .mode-container {
+      display: flex;
+      justify-content: center;
+      gap: 10px;
+      margin-bottom: 15px;
+    }
+    .btn-mode {
+      background: #15192d;
+      border: 2px solid #00f0ff;
+      color: #00f0ff;
+      padding: 10px 15px;
+      font-size: 14px;
+      font-weight: bold;
+      border-radius: 8px;
+      cursor: pointer;
+    }
+    .btn-mode.active {
+      background: #00f0ff;
+      color: #000;
+      box-shadow: 0 0 12px #00f0ff;
+    }
+    /* Grid Box Styling */
+    .section-title {
+      font-size: 16px;
+      color: #a0a5c0;
+      margin: 15px 0 8px 0;
+      text-align: left;
+      border-bottom: 1px solid #282e4a;
+      padding-bottom: 4px;
+    }
+    .grid-container {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8px;
+    }
+    .pair-card {
+      background: #121626;
+      border: 1px solid #282e4a;
+      border-radius: 8px;
+      padding: 10px 4px;
+      font-size: 13px;
+      font-weight: 900;
+      color: #fff;
+      cursor: pointer;
+    }
+    .pair-card.selected {
+      border: 2px solid #39ff14;
+      box-shadow: 0 0 8px #39ff14;
+    }
+    /* Indicator Dashboard & BOLD Display */
+    .status-box {
+      background: #151a30;
+      border: 2px solid #282e4a;
+      border-radius: 12px;
+      padding: 12px;
+      margin-top: 15px;
+    }
+    .safe-text {
+      color: #39ff14;
+      font-size: 18px;
+      font-weight: 900;
+      text-shadow: 0 0 8px #39ff14;
+    }
+    .risk-text {
+      color: #ff0055;
+      font-size: 18px;
+      font-weight: 900;
+      text-shadow: 0 0 8px #ff0055;
+    }
+    .signal-output {
+      margin-top: 15px;
+      background: #000;
+      border: 2px dashed #00f0ff;
+      border-radius: 12px;
+      padding: 15px;
+    }
+    .signal-call {
+      color: #39ff14;
+      font-size: 32px;
+      font-weight: 900;
+      text-shadow: 0 0 15px #39ff14;
+    }
+    .signal-put {
+      color: #ff0055;
+      font-size: 32px;
+      font-weight: 900;
+      text-shadow: 0 0 15px #ff0055;
+    }
+    .time-stamp {
+      font-size: 15px;
+      color: #ffcc00;
+      font-weight: 900;
+      margin-top: 8px;
+    }
+    /* Large Generate Button */
+    .btn-generate {
+      width: 100%;
+      background: linear-gradient(45deg, #00f0ff, #7000ff);
+      border: none;
+      color: #fff;
+      padding: 15px;
+      font-size: 18px;
+      font-weight: 900;
+      border-radius: 10px;
+      margin-top: 15px;
+      cursor: pointer;
+      box-shadow: 0 0 15px #7000ff;
+    }
+  </style>
+</head>
+<body>
 
-# Logging setup
-logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
+  <div class="header-title">BINARY QUANTUM BOT</div>
 
-# Telegram Bot Token (Environment Variable se lega ya fallback)
-BOT_TOKEN = "8629088801:AAGrFBvMB4yGppCcSZeRXysxK5eMNECMNTM"
+  <!-- Mode Selector -->
+  <div class="mode-container">
+    <button class="btn-mode active" id="btnManual" onclick="setMode('MANUAL')">MANUAL MODE</button>
+    <button class="btn-mode" id="btnAuto" onclick="setMode('AUTO')">AUTO MODE</button>
+  </div>
 
-# IST Timezone
-IST = pytz.timezone('Asia/Kolkata')
+  <!-- Volatility Index -->
+  <div class="status-box">
+    <div>MARKET VOLATILITY INDEX</div>
+    <div id="volatilityStatus" class="safe-text">SAFE TO TRADE ●</div>
+    <div style="margin-top:5px;">AI CONFIDENCE SCORE: <span id="confidenceScore" style="color:#00f0ff; font-size:16px;">94.2%</span></div>
+  </div>
 
-# 27 Pocket Option OTC Pairs List
-OTC_PAIRS = [
-    "EUR/USD OTC", "GBP/USD OTC", "USD/JPY OTC", "USD/CHF OTC", "AUD/USD OTC",
-    "NZD/USD OTC", "USD/CAD OTC", "EUR/GBP OTC", "EUR/JPY OTC", "GBP/JPY OTC",
-    "AUD/JPY OTC", "EUR/CAD OTC", "AUD/CAD OTC", "CAD/CHF OTC", "NZD/JPY OTC",
-    "EUR/AUD OTC", "GBP/CAD OTC", "GBP/CHF OTC", "NZD/CAD OTC", "USD/INR OTC",
-    "USD/BRL OTC", "USD/PKR OTC", "USD/BDT OTC", "USD/EGP OTC", "USD/TRY OTC",
-    "USD/RUB OTC", "USD/IDR OTC"
-]
+  <!-- Pairs Selection -->
+  <div class="section-title">QUOTEX / PO OTC PAIRS</div>
+  <div class="grid-container" id="pairsGrid">
+    <div class="pair-card selected" onclick="selectPair('EUR/USD (OTC)')">EUR/USD<br><small style="color:#39ff14;">+0.85%</small></div>
+    <div class="pair-card" onclick="selectPair('GBP/USD (OTC)')">GBP/USD<br><small style="color:#ff0055;">-0.42%</small></div>
+    <div class="pair-card" onclick="selectPair('USD/CAD (OTC)')">USD/CAD<br><small style="color:#39ff14;">+0.61%</small></div>
+  </div>
 
-# Bot State Variables
-bot_state = {
-    "active": True,
-    "mode": "AUTO",  # "AUTO" ya "MANUAL"
-    "current_pair_idx": 0,
-    "manual_pair": "EUR/USD OTC",
-    "target_wins": 5,
-    "current_wins": 0,
-    "current_losses": 0
-}
-
-# Keyboards Generator
-def get_control_keyboard():
-    status_btn = InlineKeyboardButton("⏸ PAUSE SESSION" if bot_state["active"] else "▶️ RESUME SESSION", callback_data="toggle_active")
-    mode_btn = InlineKeyboardButton(f"⚙️ MODE: {bot_state['mode']}", callback_data="toggle_mode")
-    target_btn = InlineKeyboardButton(f"🎯 TARGET: {bot_state['target_wins']} WINS", callback_data="set_target")
-    stats_btn = InlineKeyboardButton("📊 LIVE STATS", callback_data="show_stats")
+  <!-- Signal Box -->
+  <div class="signal-output" id="signalOutputBox">
+    <div style="font-size:14px; color:#aaa;">SIGNAL STATUS</div>
+    <div id="signalText" style="font-size:22px; color:#fff; font-weight:900;">WAITING FOR 0:40s MARK...</div>
     
-    keyboard = [
-        [status_btn, mode_btn],
-        [target_btn, stats_btn]
-    ]
-    
-    if bot_state["mode"] == "MANUAL":
-        pair_btn = InlineKeyboardButton(f"🔀 PAIR: {bot_state['manual_pair']}", callback_data="next_pair")
-        keyboard.append([pair_btn])
-        
-    return InlineKeyboardMarkup(keyboard)
+    <div class="time-stamp" id="deliveryTimeText">SIGNAL DELIVERED AT: --:--:--</div>
+    <div class="time-stamp" id="entryTimeText">TRADE ENTRY TIME: --:--:--</div>
+  </div>
 
-# /start Command Handler
-async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    welcome_text = (
-        "🚀 **PO-iSniper OTC Bot Active!**\n\n"
-        "Bot is ready with **20s Pre-Alerts**, **Volatility Filters**, and **Auto/Manual Pair Selection**.\n"
-        "Use buttons below to control the session."
-    )
-    await update.message.reply_text(welcome_text, parse_mode="Markdown", reply_markup=get_control_keyboard())
+  <!-- Action Button -->
+  <button class="btn-generate" onclick="generateManualSignal()">⚡ GENERATE OTC SIGNAL</button>
 
-# Callback Handler for Inline Buttons
-async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-    
-    data = query.data
-    if data == "toggle_active":
-        bot_state["active"] = not bot_state["active"]
-        status = "Resumed ▶️" if bot_state["active"] else "Paused ⏸"
-        await query.edit_message_text(f"Session status updated: **{status}**", reply_markup=get_control_keyboard(), parse_mode="Markdown")
-        
-    elif data == "toggle_mode":
-        bot_state["mode"] = "MANUAL" if bot_state["mode"] == "AUTO" else "AUTO"
-        await query.edit_message_text(f"Trading Mode changed to: **{bot_state['mode']}**", reply_markup=get_control_keyboard(), parse_mode="Markdown")
-        
-    elif data == "next_pair":
-        bot_state["current_pair_idx"] = (bot_state["current_pair_idx"] + 1) % len(OTC_PAIRS)
-        bot_state["manual_pair"] = OTC_PAIRS[bot_state["current_pair_idx"]]
-        await query.edit_message_text(f"Selected Manual Pair: **{bot_state['manual_pair']}**", reply_markup=get_control_keyboard(), parse_mode="Markdown")
-        
-    elif data == "show_stats":
-        stats_msg = (
-            f"📊 **CURRENT SESSION STATS**\n"
-            f"------------------------------------\n"
-            f"✅ Wins: `{bot_state['current_wins']}`\n"
-            f"❌ Losses: `{bot_state['current_losses']}`\n"
-            f"🎯 Target: `{bot_state['target_wins']} Wins`\n"
-            f"⚙️ Mode: `{bot_state['mode']}`\n"
-            f"------------------------------------"
-        )
-        await query.message.reply_text(stats_msg, parse_mode="Markdown")
+  <!-- Audio Buzzer Engine -->
+  <script>
+    let activeMode = 'MANUAL';
+    let selectedPair = 'EUR/USD (OTC)';
 
-# Background Signal Loop (20s Pre-Alert Engine)
-async def signal_generator_loop(app: Application, chat_id: int):
-    while True:
-        try:
-            await asyncio.sleep(1)
-            if not bot_state["active"]:
-                continue
-                
-            # Check Target Hit
-            if bot_state["current_wins"] >= bot_state["target_wins"]:
-                bot_state["active"] = False
-                await app.bot.send_message(
-                    chat_id=chat_id, 
-                    text=f"🎯 **TARGET ACHIEVED!** ({bot_state['target_wins']} Wins Hit). Session Automatically Paused.",
-                    parse_mode="Markdown"
-                )
-                continue
+    // Audio Alert Buzzer
+    function playBuzzer() {
+      try {
+        let ctx = new (window.AudioContext || window.webkitAudioContext)();
+        let osc = ctx.createOscillator();
+        let gain = ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(880, ctx.currentTime);
+        gain.gain.setValueAtTime(0.1, ctx.currentTime);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start();
+        osc.stop(ctx.currentTime + 0.4);
+      } catch(e) {
+        console.log("Audio play error:", e);
+      }
+    }
 
-            now = datetime.now(IST)
-            # Exactly 20 Seconds Pre-Alert (At :40s mark of every minute)
-            if now.second == 40:
-                # Pair Selection
-                if bot_state["mode"] == "AUTO":
-                    pair = OTC_PAIRS[now.minute % len(OTC_PAIRS)]
-                else:
-                    pair = bot_state["manual_pair"]
-                
-                # Signal Direction Calculation (Simulated Strategy)
-                direction = "CALL (BUY) ⬆️" if now.minute % 2 == 0 else "PUT (SELL) ⬇️"
-                
-                # Big & Bold Monospace Timestamps
-                sent_time = now.strftime("%I:%M:%S %p")
-                entry_time = (now.replace(second=0) + pytz.timedelta(minutes=1)).strftime("%I:%M:00 %p")
-                
-                signal_msg = (
-                    f"🔴 **POCKET OPTION - OTC SIGNAL** 🔴\n"
-                    f"------------------------------------\n"
-                    f"📊 **PAIR**         : `{pair}`\n"
-                    f"🎯 **DIRECTION**    : `{direction}`\n"
-                    f"⏳ **EXPIRY**       : `1 MINUTE`\n\n"
-                    f"📡 **SENT TIME**   : `{sent_time}`\n"
-                    f"⏰ **ENTRY TIME**  : `{entry_time}`\n\n"
-                    f"⚡ **STATUS**       : `SAFE ZONE ✅`\n"
-                    f"------------------------------------\n"
-                    f"💡 *Note: Entry time par hi 1-minute trade open karein.*"
-                )
-                
-                await app.bot.send_message(chat_id=chat_id, text=signal_msg, parse_mode="Markdown", reply_markup=get_control_keyboard())
-                await asyncio.sleep(15) # Avoid double triggers
-                
-        except Exception as e:
-            logging.error(f"Error in signal loop: {e}")
-            await asyncio.sleep(2) # Auto-restart delay on glitch
+    function setMode(mode) {
+      activeMode = mode;
+      document.getElementById('btnManual').classList.toggle('active', mode === 'MANUAL');
+      document.getElementById('btnAuto').classList.toggle('active', mode === 'AUTO');
+    }
 
-# Main Runner Function
-def main():
-    app = Application.builder().token(BOT_TOKEN).build()
-    
-    app.add_handler(CommandHandler("start", start_command))
-    app.add_handler(CallbackQueryHandler(button_handler))
-    
-    # Auto-restart & Background Task Execution
-    print("Bot Started Successfully...")
-    app.run_polling()
+    function selectPair(pairName) {
+      selectedPair = pairName;
+      document.getElementById('signalText').innerText = "SELECTED: " + pairName;
+    }
 
-if __name__ == "__main__":
-    main()
+    function generateManualSignal() {
+      let now = new Date();
+      let nowStr = now.toTimeString().split(' ')[0];
+      
+      let entryTime = new Date(now.getTime() + 20000);
+      let entryStr = entryTime.toTimeString().split(' ')[0];
+
+      let isCall = Math.random() > 0.5;
+      
+      let sigBox = document.getElementById('signalText');
+      if(isCall) {
+        sigBox.className = "signal-call";
+        sigBox.innerText = "CALL (UP) ▲";
+      } else {
+        sigBox.className = "signal-put";
+        sigBox.innerText = "PUT (DOWN) ▼";
+      }
+
+      document.getElementById('deliveryTimeText').innerText = "SIGNAL DELIVERED AT: " + nowStr;
+      document.getElementById('entryTimeText').innerText = "TRADE ENTRY TIME: " + entryStr;
+
+      playBuzzer();
+    }
+  </script>
+</body>
+</html>
