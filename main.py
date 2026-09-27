@@ -3,14 +3,13 @@ import logging
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
 from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
 
-# Token fallback setting
-TELEGRAM_BOT_TOKEN ="8629088801:AAEP9d2z_1miB03T7-sCVyZpbBUbpFIjPuo"
-WEB_APP_URL ="https://po-signal-bot-1-njfp.onrender.com"
+TELEGRAM_BOT_TOKEN ="8919819909:AAGfhnNTkOK_Gs4MDurtBB2wLBIFZ8ZRnqQ"
+WEB_APP_URL = "https://po-signal-bot-1-njfp.onrender.com"
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = [
         [
-            InlineKeyboardButton("🚀 OPEN PO-iSNIPER DASHBOARD", web_app=WebAppInfo(url=WEB_APP_URL))
+            InlineKeyboardButton("🚀 OPEN PO-ISNIPER DASHBOARD", web_app=WebAppInfo(url=WEB_APP_URL))
         ],
         [
             InlineKeyboardButton("⏸️ PAUSE SESSION", callback_data="pause"),
@@ -23,7 +22,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     await update.message.reply_text(
-        "🚀 **PO-iSNIPER OTC ENGINE ACTIVE!**\n\n"
+        "🚀 **PO-ISNIPER OTC ENGINE ACTIVE!**\n\n"
         "Click the button below to open the Live Signal Dashboard UI inside Telegram.",
         reply_markup=reply_markup,
         parse_mode="Markdown"
