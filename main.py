@@ -5,7 +5,7 @@ from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
 
 # Token fallback setting
 TELEGRAM_BOT_TOKEN = "8629088801:AAEP9d2z_1miB03T7-sCVyZpbBUbpFIjPuo"
-WEB_APP_URL = os.environ.get("WEB_APP_URL", "https://po-signal-bot-web.onrender.com")
+WEB_APP_URL ="https://po-signal-bot-1-njfp.onrender.com"
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = [
